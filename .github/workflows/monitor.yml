@@ -1,0 +1,47 @@
+
+name: ReqRes API Monitoring
+
+on:
+  schedule:
+    - cron: '0 * * * *'
+  workflow_dispatch:
+
+jobs:
+  monitor-api:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check API availability and response time
+        env:
+          REQRES_API_KEY: ${{ secrets.REQRES_API_KEY }}
+        run: |
+          set -e
+
+          echo "Checking ReqRes API..."
+
+          HTTP_RESULT=$(curl -sS \
+            --max-time 10 \
+            -o response.json \
+            -w "%{http_code} %{time_total}" \
+            -H "x-api-key: ${REQRES_API_KEY}" \
+            "https://reqres.in/api/users?page=1")
+
+          STATUS_CODE=$(echo "$HTTP_RESULT" | awk '{print $1}')
+          RESPONSE_TIME=$(echo "$HTTP_RESULT" | awk '{print $2}')
+
+          echo "Status code: $STATUS_CODE"
+          echo "Response time: ${RESPONSE_TIME}s"
+          cat response.json
+
+          if [ "$STATUS_CODE" != "200" ]; then
+            echo "FAIL: Expected HTTP 200."
+            exit 1
+          fi
+
+          if ! awk -v time="$RESPONSE_TIME" \
+            'BEGIN { exit !(time < 0.8) }'; then
+            echo "FAIL: Response time must be below 800ms."
+            exit 1
+          fi
+
+          echo "PASS: API available and response time below 800ms."
